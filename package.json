@@ -1,0 +1,11 @@
+{
+  "name": "customer-tutorial-video-automation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dry-run": "./build_all.sh --dry-run",
+    "build": "./build_all.sh",
+    "build:storyboard": "./build_storyboard_video.sh"
+  }
+}

@@ -1,0 +1,22 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+node_modules/
+.codex_py_logs/
+.superpowers/
+
+# Generated tutorial outputs should live outside this code workspace, but keep
+# these ignored in case someone runs a local build here.
+audio/
+captures/
+frames/
+manifests/
+reports/
+storyboard/
+videos/
+*.mp4
+*.mov
+*.m4a
+*.wav
