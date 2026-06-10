@@ -6,6 +6,8 @@
   "scripts": {
     "dry-run": "./build_all.sh --dry-run",
     "build": "./build_all.sh",
-    "build:storyboard": "./build_storyboard_video.sh"
+    "build:storyboard": "./build_storyboard_video.sh",
+    "playbook:workspace": "node scripts/create_playbook_workspace.mjs",
+    "build:playbook": "./build_playbook_video.sh"
   }
 }
