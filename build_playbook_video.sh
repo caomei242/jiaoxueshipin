@@ -89,17 +89,28 @@ while IFS=$'\t' read -r style scene_index audio_path text; do
   [[ -n "${audio_path:-}" ]] || continue
   mkdir -p "$(dirname "$audio_path")"
   aiff_path="${audio_path%.m4a}.aiff"
-  if [[ -n "$VOICE" ]]; then
-    say -v "$VOICE" -r "$RATE" -o "$aiff_path" "$text"
-  else
-    say -r "$RATE" -o "$aiff_path" "$text"
-  fi
-  afconvert -f m4af -d aac "$aiff_path" "$audio_path"
+  rm -f "$aiff_path"
+  {
+    if [[ -n "$VOICE" ]]; then
+      say -v "$VOICE" -r "$RATE" -o "$aiff_path" "$text"
+    else
+      say -r "$RATE" -o "$aiff_path" "$text"
+    fi
+    afconvert -f m4af -d aac "$aiff_path" "$audio_path"
+  } || {
+    rm -f "$aiff_path"
+    exit 1
+  }
   rm -f "$aiff_path"
   printf 'voiceover style=%s scene=%s audio=%s\n' "$style" "$scene_index" "$audio_path"
 done
 
-swift "$ROOT_DIR/compose_video.swift" "$manifest_path" "$video_path"
+"$NODE_BIN" "$ROOT_DIR/scripts/sync_playbook_audio_durations.mjs" --output "$OUTPUT_DIR" >/dev/null
+
+tmp_video_path="$OUTPUT_DIR/videos/.ai-image-to-video-playbook-horizontal.$$.mp4"
+rm -f "$tmp_video_path"
+swift "$ROOT_DIR/compose_video.swift" "$manifest_path" "$tmp_video_path"
+mv "$tmp_video_path" "$video_path"
 
 report_path="$OUTPUT_DIR/reports/playbook-build-report.md"
 scene_count="$("$NODE_BIN" --input-type=module - "$manifest_path" <<'NODE'
