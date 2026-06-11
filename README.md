@@ -13,6 +13,82 @@
 
 竖屏版、短视频干货风、正式批量发布版都不是 2026-05-29 阶段默认产物。先把保姆版分镜和视频对齐，再扩展其他版本。
 
+## AI优化图到AI生成视频玩法视频
+
+这条是 2026-06-10 新增的 `playbook` 旁路产线，用来做「AI优化商品图 → 确认发布 → AI批量生成视频」这种组合玩法视频。它和 2026-05-29 保姆教程分开保存，不写入、不覆盖 `2026-05-29-horizontal-v7`。
+
+- 默认输出目录：`/Users/gd/Desktop/主业/客户教程视频/稿定商品-AI优化商品图/2026-06-10-ai-image-to-video-playbook`
+- 审片板文件：`storyboard/playbook-board.html`
+- 本地审片板服务：`http://127.0.0.1:3839/`
+- 正式视频：`videos/ai-image-to-video-playbook-horizontal.mp4`
+- 目标测试店：`道理门`
+
+1. 创建玩法视频工作区：
+
+```bash
+cd /Users/gd/Desktop/主业/客户教程视频自动化
+
+node scripts/create_playbook_workspace.mjs \
+  --output /Users/gd/Desktop/主业/客户教程视频/稿定商品-AI优化商品图/2026-06-10-ai-image-to-video-playbook
+```
+
+2. 导入已经确认可用的素材图或视频结果：
+
+```bash
+node scripts/import_playbook_asset.mjs \
+  --output /Users/gd/Desktop/主业/客户教程视频/稿定商品-AI优化商品图/2026-06-10-ai-image-to-video-playbook \
+  --source /absolute/path/to/asset.png \
+  --type generated-image \
+  --title "AI优化后的主图" \
+  --tags ai-image-optimize,generated-result
+```
+
+常用素材类型：`operation-screenshot`、`dropdown-open`、`before-after`、`generated-image`、`publish-confirm`、`video-result`。常用标签按镜头意图写，例如 `ai-image-optimize`、`optimized-result`、`confirm-publish`、`ai-video-entry`、`select-product`、`generate-video`、`video-result`。
+
+3. 生成玩法脚本和审片板：
+
+```bash
+node scripts/generate_playbook_recipe.mjs \
+  --output /Users/gd/Desktop/主业/客户教程视频/稿定商品-AI优化商品图/2026-06-10-ai-image-to-video-playbook
+
+node scripts/export_playbook_board.mjs \
+  --output /Users/gd/Desktop/主业/客户教程视频/稿定商品-AI优化商品图/2026-06-10-ai-image-to-video-playbook
+```
+
+4. 启动玩法审片台：
+
+```bash
+node scripts/playbook_server.mjs \
+  --output /Users/gd/Desktop/主业/客户教程视频/稿定商品-AI优化商品图/2026-06-10-ai-image-to-video-playbook \
+  --port 3839
+```
+
+打开 `http://127.0.0.1:3839/` 后，可以改镜头顺序、删除镜头、换底图素材、加/删放大图、改字幕和口播。顶部 `一键生成玩法横屏视频` 会调用本地 `/api/build-video`，底层运行正式 `build_playbook_video.sh`。
+
+生成完成后，结果区会出现：
+
+- `打开视频`：直接用系统默认播放器打开玩法 MP4。
+- `访达定位`：在 Finder 中选中生成的视频文件。
+- `打开视频文件夹`：打开玩法视频的 `videos/` 输出目录。
+
+5. 命令行兜底生成玩法视频：
+
+```bash
+./build_playbook_video.sh \
+  --output /Users/gd/Desktop/主业/客户教程视频/稿定商品-AI优化商品图/2026-06-10-ai-image-to-video-playbook
+```
+
+6. 如需从当前 Chrome 登录态做安全抓取骨架，先 dry-run：
+
+```bash
+CDP_BASE_URL=http://localhost:3456 \
+node scripts/capture_playbook_flow.mjs \
+  --output /Users/gd/Desktop/主业/客户教程视频/稿定商品-AI优化商品图/2026-06-10-ai-image-to-video-playbook \
+  --dry-run
+```
+
+`capture_playbook_flow.mjs` 当前只做页面识别、截图和 checkpoint，不会点击确认发布或 AI 生成视频。只有同时传 `--allow-publish`、`--allow-generate-video`，并且页面文本包含 `道理门`，才会在 manifest 里标记最终动作具备安全条件；脚本本身仍不会执行最终点击。
+
 ## 标准流程
 
 1. 生成或更新脚本与审片板：

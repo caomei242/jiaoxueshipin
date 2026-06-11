@@ -224,6 +224,15 @@ function buildHtml({ recipe, manifest, outputDir }) {
     .build-status.error {
       color: var(--danger);
     }
+    .build-open-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .build-open-actions[hidden] {
+      display: none;
+    }
     .scene-list {
       display: grid;
       gap: 14px;
@@ -452,6 +461,11 @@ function buildHtml({ recipe, manifest, outputDir }) {
       <div class="toolbar-actions">
         <button class="primary" id="build-video" type="button">一键生成玩法横屏视频</button>
         <span class="build-status" id="build-status" aria-live="polite">等待生成视频。</span>
+        <div class="build-open-actions" id="build-open-actions" hidden>
+          <button type="button" data-open-build-target="video" data-open-build-action="open">打开视频</button>
+          <button type="button" data-open-build-target="video" data-open-build-action="reveal">访达定位</button>
+          <button type="button" data-open-build-target="video-folder" data-open-build-action="open">打开视频文件夹</button>
+        </div>
         <button class="primary" id="save-order" type="button">保存当前顺序</button>
       </div>
     </div>
@@ -472,6 +486,7 @@ function buildHtml({ recipe, manifest, outputDir }) {
     const saveOrderButton = document.querySelector('#save-order');
     const buildVideoButton = document.querySelector('#build-video');
     const buildStatus = document.querySelector('#build-status');
+    const buildOpenActions = document.querySelector('#build-open-actions');
 
     function storageKey(sceneKey) {
       return 'playbook.review.' + sceneKey;
@@ -485,6 +500,10 @@ function buildHtml({ recipe, manifest, outputDir }) {
     function showBuildStatus(text, type = '') {
       buildStatus.textContent = text;
       buildStatus.className = type ? 'build-status ' + type : 'build-status';
+    }
+
+    function setBuildActionsVisible(visible) {
+      if (buildOpenActions) buildOpenActions.hidden = !visible;
     }
 
     function readLocalOverride(sceneKey) {
@@ -730,6 +749,18 @@ function buildHtml({ recipe, manifest, outputDir }) {
       return '生成完成。';
     }
 
+    function renderBuildResult(result) {
+      if (result?.ok && result.videoPath) {
+        showBuildStatus(buildSuccessMessage(result), 'success');
+        setBuildActionsVisible(true);
+        return;
+      }
+      if (result?.error) {
+        showBuildStatus('上次生成失败：' + result.error, 'error');
+        setBuildActionsVisible(false);
+      }
+    }
+
     function buildErrorMessage(error) {
       if (error?.status === 501) return '生成视频暂不可用：' + error.message;
       if (error?.status === 409) return '已有生成任务在运行，请稍后再试。';
@@ -764,18 +795,43 @@ function buildHtml({ recipe, manifest, outputDir }) {
       buildVideoButton.disabled = true;
       const originalText = buildVideoButton.textContent;
       buildVideoButton.textContent = '生成中...';
+      setBuildActionsVisible(false);
       showBuildStatus('正在调用本地视频生成任务...');
       try {
         const result = await postJson('/api/build-video', {});
         if (result?.ok === false) {
           throw new Error(result.error || '视频生成没有完成');
         }
-        showBuildStatus(buildSuccessMessage(result), 'success');
+        renderBuildResult(result);
       } catch (error) {
         showBuildStatus(buildErrorMessage(error), 'error');
+        setBuildActionsVisible(false);
       } finally {
         buildVideoButton.disabled = false;
         buildVideoButton.textContent = originalText;
+      }
+    }
+
+    async function refreshBuildResult() {
+      try {
+        const response = await fetch('/api/build-result', { cache: 'no-store' });
+        if (response.ok) renderBuildResult(await response.json());
+      } catch {
+        // 静态 file:// 或服务没开时不打扰审片。
+      }
+    }
+
+    async function openBuildTarget(button) {
+      const target = button.dataset.openBuildTarget || 'video';
+      const action = button.dataset.openBuildAction || 'open';
+      button.disabled = true;
+      try {
+        const result = await postJson('/api/open-build-target', { target, action });
+        showBuildStatus((result.message || '已打开。') + ' ' + (result.path || ''), 'success');
+      } catch (error) {
+        showBuildStatus('打开失败：' + (error?.message || String(error)), 'error');
+      } finally {
+        button.disabled = false;
       }
     }
 
@@ -897,6 +953,10 @@ function buildHtml({ recipe, manifest, outputDir }) {
       buildVideo();
     });
 
+    document.querySelectorAll('[data-open-build-target]').forEach(button => {
+      button.addEventListener('click', () => openBuildTarget(button));
+    });
+
     async function init() {
       try {
         const response = await fetch('/api/state', { cache: 'no-store' });
@@ -913,6 +973,7 @@ function buildHtml({ recipe, manifest, outputDir }) {
         serverState = { scenes: {}, sceneOrder: [] };
       }
       render();
+      refreshBuildResult();
       showMessage('审片台已就绪。');
     }
 

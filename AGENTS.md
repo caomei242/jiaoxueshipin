@@ -14,6 +14,19 @@
 - 2026-05-29 阶段正式视频文件是 `videos/nanny-horizontal-storyboard.mp4`。
 - `videos/nanny-horizontal.mp4` 属于旧模板链路，不能当作审片板修订后的正式结果。
 
+## AI优化图到AI生成视频玩法视频
+
+- AI优化图到AI生成视频玩法视频属于 playbook 旁路产线；不得写入或覆盖 2026-05-29-horizontal-v7 的 storyboard、frames、audio、manifests 或 videos。单功能保姆教程继续使用原 storyboard-preview 链路。
+- playbook 默认输出目录是 `/Users/gd/Desktop/主业/客户教程视频/稿定商品-AI优化商品图/2026-06-10-ai-image-to-video-playbook`，正式视频是 `videos/ai-image-to-video-playbook-horizontal.mp4`。
+- playbook 只服务组合玩法包装：先用 AI优化商品图优化老商品信息，再确认发布到测试店商品，最后进入 AI生成视频批量生成视频；不要把它当作单功能保姆教程替代品。
+- playbook 素材入口是 `manifests/assets.json`，通过 `scripts/import_playbook_asset.mjs` 导入真实操作截图、AI 优化结果图、发布确认截图和视频结果；垃圾图、无关图和非 `道理门` 测试店图不要标为可交付素材。
+- playbook 审片板由 `scripts/export_playbook_board.mjs` 输出，服务由 `scripts/playbook_server.mjs --port 3839` 启动；顶部必须保留 `一键生成玩法横屏视频`，避免用户每次都要喊 Codex 生成。
+- playbook 一键生成完成后必须提供 `打开视频`、`访达定位`、`打开视频文件夹`，不能只让用户看到一串路径；打开接口只能访问当前 playbook 输出目录内的文件。
+- playbook 配音也必须把 `SKU` 转成 `S K U`、`AI` 转成 `A I` 后再交给 macOS `say`，避免客户视频里读错。
+- `scripts/capture_playbook_flow.mjs` 当前是安全抓取骨架：默认只识别当前 Chrome 里的稿定商品页面、截图、写 `manifests/capture.json` 和 checkpoint，不自动点击确认发布、AI 生成视频或充值。
+- 只有同时传 `--allow-publish` 和 `--allow-generate-video`，并且页面文本包含测试店 `道理门`，且不是 `--dry-run`，capture manifest 里才允许标记 final actions 安全；即使标记安全，当前骨架也不能真的发布或生成。
+- capture manifest 不得落 cookie、token、secret、debug query、URL hash 或浏览器调试敏感信息；写入 URL 时只保留 protocol、host 和 pathname。
+
 ## 正确流水线
 
 1. 先通过真实页面截图、脚本和 `scripts/export_shooting_board.mjs` 生成 `storyboard/shooting-board.html`。

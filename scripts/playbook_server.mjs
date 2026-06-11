@@ -192,6 +192,50 @@ async function currentBuildResult() {
   return existingBuildResult();
 }
 
+function ensureInsideOutputDir(targetPath) {
+  const resolved = path.resolve(targetPath);
+  const root = path.resolve(outputDir);
+  if (resolved === root || resolved.startsWith(root + path.sep)) return resolved;
+  const error = new Error('只能打开当前玩法视频输出目录内的文件。');
+  error.status = 403;
+  throw error;
+}
+
+async function openBuildTarget(payload = {}) {
+  const result = await currentBuildResult();
+  const target = String(payload.target || 'video');
+  const action = String(payload.action || 'open');
+  const targetPath = {
+    video: result?.videoPath || paths.videoPath,
+    'video-folder': path.dirname(paths.videoPath),
+    'output-folder': outputDir,
+    report: paths.reportPath,
+    log: result?.logPath
+  }[target];
+
+  if (!targetPath) {
+    const error = new Error('没有可打开的目标文件。');
+    error.status = 404;
+    throw error;
+  }
+
+  const resolved = ensureInsideOutputDir(targetPath);
+  await fs.access(resolved);
+  const args = action === 'reveal' ? ['-R', resolved] : [resolved];
+  const child = spawn('open', args, {
+    detached: true,
+    stdio: 'ignore'
+  });
+  child.unref();
+  return {
+    ok: true,
+    target,
+    action,
+    path: resolved,
+    message: action === 'reveal' ? '已在访达中定位。' : '已打开。'
+  };
+}
+
 async function runBuildVideo() {
   if (buildRunning) {
     const error = new Error('playbook video build is already running');
@@ -359,6 +403,12 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/api/build-result') {
       sendJson(req, res, 200, await currentBuildResult() || { ok: false, outputDir, videoPath: paths.videoPath, error: 'no build result yet' });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/open-build-target') {
+      const result = await openBuildTarget(await readRequestJson(req));
+      sendJson(req, res, 200, result);
       return;
     }
 
