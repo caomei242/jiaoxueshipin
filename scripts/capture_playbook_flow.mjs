@@ -7,6 +7,7 @@ import { writeJson } from '../lib/fs-utils.mjs';
 const DEFAULT_CDP_BASE_URL = 'http://localhost:3456';
 const TARGET_DOMAIN = 'gdsp.huanleguang.com';
 const PREFERRED_ROUTES = ['/app-pim', '/app-douyin'];
+const SENSITIVE_KEY_PATTERN = /^(token|cookie|secret|debug(?:_secret)?|access_token|refresh_token|auth|authorization|session|sid)$/i;
 
 function usageError(message) {
   return new Error(`${message}\nUsage: node scripts/capture_playbook_flow.mjs --output <dir> [--dry-run] [--allow-publish] [--allow-generate-video]`);
@@ -67,11 +68,27 @@ function sanitizeUrlForOutput(value) {
 function sanitizeTextForOutput(value) {
   return String(value || '')
     .replace(/https?:\/\/[^\s"'<>]+/g, match => sanitizeUrlForOutput(match))
-    .replace(/\b(token|cookie|secret|debug(?:_secret)?|access_token|refresh_token|auth|authorization|session|sid)\b\s*[:=]\s*([^\s"'<>]+)/gi, '$1=[redacted]');
+    .replace(/\b(token|cookie|secret|debug(?:_secret)?|access_token|refresh_token|auth|authorization|session|sid)\b\s*[:=]\s*([^\s"'<>]+)/gi, '$1=[redacted]')
+    .replace(/(["'])(token|cookie|secret|debug(?:_secret)?|access_token|refresh_token|auth|authorization|session|sid)\1\s*:\s*(["'])[^"']*\3/gi, '$1$2$1:$3[redacted]$3');
+}
+
+function sanitizeValueForOutput(value, key = '') {
+  if (SENSITIVE_KEY_PATTERN.test(String(key))) return '[redacted]';
+  if (typeof value === 'string') return sanitizeTextForOutput(value);
+  if (Array.isArray(value)) return value.map(item => sanitizeValueForOutput(item));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([entryKey, entryValue]) => [
+        entryKey,
+        sanitizeValueForOutput(entryValue, entryKey)
+      ])
+    );
+  }
+  return value;
 }
 
 function sanitizeJsonForOutput(value) {
-  return sanitizeTextForOutput(JSON.stringify(value));
+  return JSON.stringify(sanitizeValueForOutput(value));
 }
 
 async function cdpRequest(cdpBaseUrl, pathname, options = {}) {
