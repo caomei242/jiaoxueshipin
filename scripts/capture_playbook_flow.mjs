@@ -47,18 +47,39 @@ function normalizeBaseUrl(value) {
   return String(value || DEFAULT_CDP_BASE_URL).replace(/\/+$/, '');
 }
 
+function sanitizeUrlForOutput(value) {
+  if (!value) return '';
+  const raw = String(value);
+  try {
+    const parsed = new URL(raw);
+    parsed.username = '';
+    parsed.password = '';
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString().replace(/\/$/, parsed.pathname === '/' ? '/' : '');
+  } catch {
+    return raw
+      .replace(/^([^:/?#]+:\/\/)[^/@\s]+@/, '$1')
+      .split(/[?#]/)[0];
+  }
+}
+
+function sanitizeTextForOutput(value) {
+  return String(value || '').replace(/https?:\/\/[^\s"'<>]+/g, match => sanitizeUrlForOutput(match));
+}
+
 async function cdpRequest(cdpBaseUrl, pathname, options = {}) {
   const url = `${normalizeBaseUrl(cdpBaseUrl)}${pathname}`;
   let response;
   try {
     response = await fetch(url, options);
   } catch (error) {
-    throw new Error(`CDP request failed: unable to reach ${normalizeBaseUrl(cdpBaseUrl)} (attempted ${url}): ${error.message}`);
+    throw new Error(`CDP request failed: unable to reach ${sanitizeUrlForOutput(normalizeBaseUrl(cdpBaseUrl))} (attempted ${sanitizeUrlForOutput(url)}): ${sanitizeTextForOutput(error.message)}`);
   }
 
   const body = await response.text().catch(() => '');
   if (!response.ok) {
-    throw new Error(`CDP request failed ${response.status} ${response.statusText} at ${url}${body ? `\n${body}` : ''}`);
+    throw new Error(`CDP request failed ${response.status} ${response.statusText} at ${sanitizeUrlForOutput(url)}`);
   }
   if (!body) return {};
   try {
@@ -71,7 +92,7 @@ async function cdpRequest(cdpBaseUrl, pathname, options = {}) {
 async function listTargets(cdpBaseUrl) {
   const targets = await cdpRequest(cdpBaseUrl, '/targets');
   if (!Array.isArray(targets)) {
-    throw new Error(`CDP ${normalizeBaseUrl(cdpBaseUrl)}/targets returned non-array response`);
+    throw new Error(`CDP ${sanitizeUrlForOutput(normalizeBaseUrl(cdpBaseUrl))}/targets returned non-array response`);
   }
   return targets;
 }
@@ -123,7 +144,7 @@ function safeTargetInfo(target) {
     targetId: target.targetId || target.id || null,
     type: target.type || null,
     title: target.title || '',
-    url: target.url || ''
+    url: sanitizeUrlForOutput(target.url || '')
   };
 }
 
@@ -187,12 +208,12 @@ async function main() {
   const targets = await listTargets(cdpBaseUrl);
   const target = findPlaybookTarget(targets);
   if (!target) {
-    throw new Error(`No relevant 稿定商品 tab found from CDP base ${cdpBaseUrl}. Open a ${TARGET_DOMAIN} /app-pim or /app-douyin tab and retry.`);
+    throw new Error(`No relevant 稿定商品 tab found from CDP base ${sanitizeUrlForOutput(cdpBaseUrl)}. Open a ${TARGET_DOMAIN} /app-pim or /app-douyin tab and retry.`);
   }
 
   const targetId = target.targetId || target.id;
   if (!targetId) {
-    throw new Error(`Selected CDP target has no targetId from ${cdpBaseUrl}: ${JSON.stringify(target)}`);
+    throw new Error(`Selected CDP target has no targetId from ${sanitizeUrlForOutput(cdpBaseUrl)}: ${JSON.stringify(safeTargetInfo(target))}`);
   }
 
   const pageProbe = await evalInTarget(cdpBaseUrl, targetId, pageTextProbeSource());
@@ -212,11 +233,11 @@ async function main() {
     playbook: PLAYBOOK_NAME,
     mode,
     createdAt,
-    cdpBaseUrl,
+    cdpBaseUrl: sanitizeUrlForOutput(cdpBaseUrl),
     target: {
       ...safeTargetInfo(target),
       currentTitle: pageProbe?.title || target.title || '',
-      currentUrl: pageProbe?.url || target.url || ''
+      currentUrl: sanitizeUrlForOutput(pageProbe?.url || target.url || '')
     },
     screenshots,
     safety,
