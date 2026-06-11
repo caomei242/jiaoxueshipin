@@ -65,7 +65,13 @@ function sanitizeUrlForOutput(value) {
 }
 
 function sanitizeTextForOutput(value) {
-  return String(value || '').replace(/https?:\/\/[^\s"'<>]+/g, match => sanitizeUrlForOutput(match));
+  return String(value || '')
+    .replace(/https?:\/\/[^\s"'<>]+/g, match => sanitizeUrlForOutput(match))
+    .replace(/\b(token|cookie|secret|debug(?:_secret)?|access_token|refresh_token|auth|authorization|session|sid)\b\s*[:=]\s*([^\s"'<>]+)/gi, '$1=[redacted]');
+}
+
+function sanitizeJsonForOutput(value) {
+  return sanitizeTextForOutput(JSON.stringify(value));
 }
 
 async function cdpRequest(cdpBaseUrl, pathname, options = {}) {
@@ -104,7 +110,7 @@ async function evalInTarget(cdpBaseUrl, targetId, source) {
     body: source
   });
   if (result && Object.prototype.hasOwnProperty.call(result, 'exceptionDetails')) {
-    throw new Error(`CDP eval exception: ${JSON.stringify(result.exceptionDetails)}`);
+    throw new Error(`CDP eval exception: ${sanitizeJsonForOutput(result.exceptionDetails)}`);
   }
   return result?.value ?? result;
 }
@@ -143,7 +149,7 @@ function safeTargetInfo(target) {
   return {
     targetId: target.targetId || target.id || null,
     type: target.type || null,
-    title: target.title || '',
+    title: sanitizeTextForOutput(target.title || ''),
     url: sanitizeUrlForOutput(target.url || '')
   };
 }
@@ -236,9 +242,10 @@ async function main() {
     cdpBaseUrl: sanitizeUrlForOutput(cdpBaseUrl),
     target: {
       ...safeTargetInfo(target),
-      currentTitle: pageProbe?.title || target.title || '',
+      currentTitle: sanitizeTextForOutput(pageProbe?.title || target.title || ''),
       currentUrl: sanitizeUrlForOutput(pageProbe?.url || target.url || '')
     },
+    pageTextSample: sanitizeTextForOutput(pageProbe?.textSample || ''),
     screenshots,
     safety,
     nextCheckpoint: buildNextCheckpoint(flags, safety)
