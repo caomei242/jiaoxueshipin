@@ -8,6 +8,7 @@
     "build": "./build_all.sh",
     "build:storyboard": "./build_storyboard_video.sh",
     "playbook:workspace": "node scripts/create_playbook_workspace.mjs",
-    "build:playbook": "./build_playbook_video.sh"
+    "build:playbook": "./build_playbook_video.sh",
+    "build:social-reference": "./build_social_reference_video.sh"
   }
 }

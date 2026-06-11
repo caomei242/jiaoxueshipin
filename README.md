@@ -13,6 +13,32 @@
 
 竖屏版、短视频干货风、正式批量发布版都不是 2026-05-29 阶段默认产物。先把保姆版分镜和视频对齐，再扩展其他版本。
 
+## 参考视频社媒模板样片
+
+这条是 2026-06-11 新增的 `social-reference` 旁路产线，用来复刻用户提供的社媒包装参考视频结构：前半段用「原图 / 生成效果图」矩阵快速展示价值，中后段切真实后台录屏和生成结果确认页。它不替代保姆教程审片板，也不使用 2026-06-10 的白底玩法审片台。
+
+- 参考视频默认路径：`/Users/gd/Desktop/ai优化商品图.mp4`
+- 默认输出目录：`/Users/gd/Desktop/主业/客户教程视频/稿定商品-AI优化商品图/2026-06-11-social-reference-v1`
+- 正式视频：`videos/ai-image-social-reference-horizontal.mp4`
+- 配套字幕：`scripts/social-reference-horizontal.srt`
+- 构建报告：`reports/social-reference-build-report.md`
+
+一键生成：
+
+```bash
+cd /Users/gd/Desktop/主业/客户教程视频自动化
+
+./build_social_reference_video.sh \
+  --reference /Users/gd/Desktop/ai优化商品图.mp4 \
+  --output /Users/gd/Desktop/主业/客户教程视频/稿定商品-AI优化商品图/2026-06-11-social-reference-v1
+```
+
+也可以用 npm 脚本：
+
+```bash
+npm run build:social-reference
+```
+
 ## AI优化图到AI生成视频玩法视频
 
 这条是 2026-06-10 新增的 `playbook` 旁路产线，用来做「AI优化商品图 → 确认发布 → AI批量生成视频」这种组合玩法视频。它和 2026-05-29 保姆教程分开保存，不写入、不覆盖 `2026-05-29-horizontal-v7`。
