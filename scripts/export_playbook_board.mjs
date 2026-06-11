@@ -758,6 +758,11 @@ function buildHtml({ recipe, manifest, outputDir }) {
       if (result?.error) {
         showBuildStatus('上次生成失败：' + result.error, 'error');
         setBuildActionsVisible(false);
+        return;
+      }
+      if (result?.ok === false) {
+        showBuildStatus(result.message || '尚未生成玩法视频。');
+        setBuildActionsVisible(false);
       }
     }
 

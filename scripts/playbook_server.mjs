@@ -175,11 +175,13 @@ async function saveOrder(payload) {
 async function existingBuildResult() {
   try {
     const stat = await fs.stat(paths.videoPath);
+    if (!stat.isFile() || stat.size <= 0) return null;
     return {
       ok: true,
       source: 'existing-file',
       outputDir,
       videoPath: paths.videoPath,
+      fileSize: stat.size,
       finishedAt: stat.mtime.toISOString()
     };
   } catch {
@@ -220,13 +222,25 @@ async function openBuildTarget(payload = {}) {
   }
 
   const resolved = ensureInsideOutputDir(targetPath);
-  await fs.access(resolved);
+  try {
+    await fs.access(resolved);
+  } catch {
+    const error = new Error('目标文件还不存在，请先生成视频。');
+    error.status = 404;
+    throw error;
+  }
   const args = action === 'reveal' ? ['-R', resolved] : [resolved];
-  const child = spawn('open', args, {
-    detached: true,
-    stdio: 'ignore'
+  await new Promise((resolve, reject) => {
+    const child = spawn('open', args, {
+      detached: true,
+      stdio: 'ignore'
+    });
+    child.once('error', reject);
+    child.once('spawn', () => {
+      child.unref();
+      resolve();
+    });
   });
-  child.unref();
   return {
     ok: true,
     target,
@@ -282,10 +296,15 @@ async function runBuildVideo() {
         logStream.end(() => reject(error));
       });
     });
+    const videoStat = await fs.stat(paths.videoPath);
+    if (!videoStat.isFile() || videoStat.size <= 0) {
+      throw new Error(`build completed but video was not created: ${paths.videoPath}`);
+    }
     lastBuildResult = {
       ok: true,
       outputDir,
       videoPath: paths.videoPath,
+      fileSize: videoStat.size,
       logPath,
       startedAt,
       finishedAt: new Date().toISOString()
@@ -402,7 +421,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'GET' && url.pathname === '/api/build-result') {
-      sendJson(req, res, 200, await currentBuildResult() || { ok: false, outputDir, videoPath: paths.videoPath, error: 'no build result yet' });
+      sendJson(req, res, 200, await currentBuildResult() || {
+        ok: false,
+        pending: false,
+        outputDir,
+        videoPath: paths.videoPath,
+        message: '尚未生成玩法视频。'
+      });
       return;
     }
 
