@@ -9,6 +9,8 @@
     "build:storyboard": "./build_storyboard_video.sh",
     "playbook:workspace": "node scripts/create_playbook_workspace.mjs",
     "build:playbook": "./build_playbook_video.sh",
-    "build:social-reference": "./build_social_reference_video.sh"
+    "build:social-reference": "./build_social_reference_video.sh",
+    "serve:hub": "node scripts/tutorial_hub_server.mjs --port 3849",
+    "serve:hub:lan": "node scripts/tutorial_hub_server.mjs --port 3849 --host 0.0.0.0"
   }
 }
