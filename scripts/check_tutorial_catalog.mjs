@@ -36,6 +36,14 @@ for (const tutorial of publicData.tutorials) {
     throw new Error(`active build-enabled tutorial ${tutorial.id} missing build command`);
   }
 
+  if (tutorial.startEnabled && !loadedTutorial.start.script) {
+    throw new Error(`start-enabled tutorial ${tutorial.id} missing start script`);
+  }
+
+  if (tutorial.startEnabled && !tutorial.boardRoute) {
+    throw new Error(`start-enabled tutorial ${tutorial.id} missing boardRoute`);
+  }
+
   if (!tutorial.buildEnabled && !tutorial.buildDisabledReason) {
     throw new Error(`disabled tutorial ${tutorial.id} missing disabled reason`);
   }

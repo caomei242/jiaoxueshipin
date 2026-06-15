@@ -239,6 +239,56 @@ async function openTarget(tutorial, payload = {}) {
   return { ok: true, target, action, path: safePath };
 }
 
+async function serveStarterBoard(req, res, tutorial) {
+  const boardPath = path.join(tutorial.outputDir, 'storyboard', 'shooting-board.html');
+  try {
+    const html = await fs.readFile(boardPath, 'utf8');
+    sendText(req, res, 200, html, 'text/html; charset=utf-8');
+    return;
+  } catch {
+    sendText(req, res, 200, renderStarterMissingHtml(tutorial, boardPath), 'text/html; charset=utf-8');
+  }
+}
+
+function renderStarterMissingHtml(tutorial, boardPath) {
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(tutorial.title)}制作板待创建</title>
+  <style>
+    :root { color-scheme: light; --bg: #f4f7fb; --panel: #fff; --ink: #111827; --muted: #667085; --line: #d0d5dd; --brand: #2563eb; --warn: #c2410c; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; color: var(--ink); background: var(--bg); }
+    header { padding: 24px 28px; color: white; background: #111827; }
+    main { padding: 28px; }
+    .panel { max-width: 880px; border: 1px solid var(--line); border-radius: 8px; padding: 20px; background: var(--panel); box-shadow: 0 10px 24px rgba(16, 24, 40, .06); }
+    a { display: inline-flex; margin-top: 12px; border: 1px solid var(--brand); border-radius: 8px; padding: 10px 14px; color: white; background: var(--brand); font-weight: 800; text-decoration: none; }
+    code { display: inline-block; max-width: 100%; overflow-wrap: anywhere; border-radius: 5px; padding: 2px 5px; color: #1f2937; background: #eef2ff; }
+    p { color: var(--muted); line-height: 1.7; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>${escapeHtml(tutorial.title)}制作板还没创建</h1>
+  </header>
+  <main>
+    <section class="panel">
+      <p>这个功能可以开始做保姆教程，但还没有生成制作板。</p>
+      <p>回到 Hub，点击 <b>${escapeHtml(tutorial.start.label || '开始制作')}</b>，系统会创建独立输出目录、采集清单和制作板。</p>
+      <p>预期制作板路径：<code>${escapeHtml(boardPath)}</code></p>
+      <a href="/">返回 Hub</a>
+    </section>
+  </main>
+</body>
+</html>`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
 function renderHubHtml(publicData) {
   const dataJson = JSON.stringify(publicData).replaceAll('<', '\\u003c');
   return `<!doctype html>
@@ -343,6 +393,15 @@ function renderHubHtml(publicData) {
       try { setLog(JSON.stringify(await post('/api/tutorial/' + id + '/build'), null, 2)); }
       catch (error) { setLog(error.message); }
     }
+    async function startTutorial(id) {
+      setLog('正在创建制作板和采集清单...');
+      try {
+        const result = await post('/api/tutorial/' + id + '/start');
+        setLog(JSON.stringify(result, null, 2));
+      } catch (error) {
+        setLog(error.message);
+      }
+    }
     async function openTarget(id, target, action = 'open') {
       setLog('正在打开...');
       try { setLog(JSON.stringify(await post('/api/tutorial/' + id + '/open', { target, action }), null, 2)); }
@@ -374,8 +433,18 @@ function renderHubHtml(publicData) {
         const parsed = new URL(tutorial.boardUrl || '');
         if (parsed.protocol === 'http:' || parsed.protocol === 'https:') boardUrl = parsed.href;
       } catch {}
-      const boardAction = boardUrl ? '<a class="action primary" href="' + escapeHtml(boardUrl) + '" target="_blank" rel="noreferrer">进入审片</a>' : '<button disabled>待采集后开放审片</button>';
-      const buildButton = tutorial.buildEnabled ? '<button class="primary" data-build="' + escapeHtml(tutorial.id) + '">一键生成当前教程</button>' : '<button disabled>暂不能生成</button>';
+      const boardRoute = String(tutorial.boardRoute || '').startsWith('/tutorial/') ? tutorial.boardRoute : '';
+      const boardAction = boardUrl
+        ? '<a class="action primary" href="' + escapeHtml(boardUrl) + '" target="_blank" rel="noreferrer">进入审片</a>'
+        : boardRoute
+          ? '<a class="action" href="' + escapeHtml(boardRoute) + '?v=' + Date.now() + '" target="_blank" rel="noreferrer">进入制作板</a>'
+          : '<button disabled>待采集后开放审片</button>';
+      const startAction = tutorial.startEnabled
+        ? '<button class="primary" data-start="' + escapeHtml(tutorial.id) + '">' + escapeHtml(tutorial.startLabel || '开始制作') + '</button>'
+        : tutorial.startDisabledReason
+          ? '<button disabled>' + escapeHtml(tutorial.startDisabledReason) + '</button>'
+          : '';
+      const buildButton = tutorial.buildEnabled ? '<button class="primary" data-build="' + escapeHtml(tutorial.id) + '">一键生成当前教程</button>' : '<button disabled>素材齐后生成</button>';
       const reason = tutorial.buildDisabledReason ? '<div class="note">' + escapeHtml(tutorial.buildDisabledReason) + '</div>' : '';
       const videoExists = tutorial.videoInfo?.exists ? '已生成' : '未生成';
       detailEl.innerHTML = '<span class="badge ' + statusClass + '">' + escapeHtml(tutorial.statusLabel) + '</span>' +
@@ -388,7 +457,7 @@ function renderHubHtml(publicData) {
         '<div><b>输出目录</b><span>' + escapeHtml(tutorial.outputDir) + '</span></div>' +
         '<div><b>视频路径</b><span>' + escapeHtml(tutorial.videoPath) + '</span></div>' +
         '</div>' +
-        '<div class="actions">' + boardAction + buildButton +
+        '<div class="actions">' + startAction + boardAction + buildButton +
         '<button data-open-video="' + escapeHtml(tutorial.id) + '">打开视频</button>' +
         '<button data-reveal-video="' + escapeHtml(tutorial.id) + '">访达定位</button>' +
         '<button data-open-folder="' + escapeHtml(tutorial.id) + '">打开视频文件夹</button>' +
@@ -397,6 +466,7 @@ function renderHubHtml(publicData) {
         '<pre id="log">等待操作</pre>';
 
       detailEl.querySelector('[data-build]')?.addEventListener('click', event => buildTutorial(event.currentTarget.dataset.build));
+      detailEl.querySelector('[data-start]')?.addEventListener('click', event => startTutorial(event.currentTarget.dataset.start));
       detailEl.querySelector('[data-open-video]')?.addEventListener('click', event => openTarget(event.currentTarget.dataset.openVideo, 'video'));
       detailEl.querySelector('[data-reveal-video]')?.addEventListener('click', event => openTarget(event.currentTarget.dataset.revealVideo, 'video', 'reveal'));
       detailEl.querySelector('[data-open-folder]')?.addEventListener('click', event => openTarget(event.currentTarget.dataset.openFolder, 'folder'));
@@ -419,6 +489,7 @@ async function publicCatalogWithVideoInfo(catalog) {
 
 const flags = parseArgs(process.argv.slice(2));
 let buildRunning = false;
+let startRunning = false;
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -448,6 +519,54 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/api/tutorials') {
       sendJson(req, res, 200, await publicCatalogWithVideoInfo(catalog));
+      return;
+    }
+
+    const starterMatch = url.pathname.match(/^\/tutorial\/([^/]+)\/starter$/);
+    if (req.method === 'GET' && starterMatch) {
+      const tutorial = findTutorial(catalog, starterMatch[1]);
+      if (!tutorial) {
+        sendText(req, res, 404, '教程不存在');
+        return;
+      }
+      await serveStarterBoard(req, res, tutorial);
+      return;
+    }
+
+    const startMatch = url.pathname.match(/^\/api\/tutorial\/([^/]+)\/start$/);
+    if (req.method === 'POST' && startMatch) {
+      const tutorial = findTutorial(catalog, startMatch[1]);
+      if (!tutorial) {
+        sendJson(req, res, 404, { ok: false, error: '教程不存在' });
+        return;
+      }
+      if (!tutorial.start.enabled || !tutorial.start.script) {
+        sendJson(req, res, 409, {
+          ok: false,
+          error: '当前教程没有开始制作入口',
+          reason: tutorial.start.reason || 'start disabled'
+        });
+        return;
+      }
+      if (startRunning) {
+        sendJson(req, res, 409, { ok: false, error: '已有教程正在创建制作板，请稍后再试。' });
+        return;
+      }
+
+      startRunning = true;
+      try {
+        const result = await runCommand(process.execPath, [tutorial.start.script, ...tutorial.start.args]);
+        sendJson(req, res, 200, {
+          ok: true,
+          tutorialId: tutorial.id,
+          outputDir: tutorial.outputDir,
+          starterUrl: tutorial.boardRoute || '',
+          stdout: result.stdout,
+          stderr: result.stderr
+        });
+      } finally {
+        startRunning = false;
+      }
       return;
     }
 

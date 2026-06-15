@@ -46,7 +46,14 @@
       "targetStore": "道理门",
       "outputDir": "/Users/gd/Desktop/主业/客户教程视频/稿定商品-AI批量生成视频/2026-06-15-horizontal-v1",
       "boardUrl": "",
+      "boardRoute": "/tutorial/ai-batch-video-nanny/starter",
       "videoPath": "videos/nanny-horizontal-storyboard.mp4",
+      "start": {
+        "enabled": true,
+        "label": "开始制作保姆教程",
+        "script": "scripts/start_tutorial_workspace.mjs",
+        "args": ["--tutorial", "ai-batch-video-nanny"]
+      },
       "build": {
         "enabled": false,
         "reason": "AI批量生成视频的真实操作截图和分镜还没有采集，不能用假画面出片。"
