@@ -2,25 +2,22 @@
   "version": 1,
   "tabs": [
     {
-      "id": "ai-image",
-      "label": "AI图片",
-      "description": "商品图、主图、SKU图和品牌展示相关教程"
+      "id": "feature-groups",
+      "label": "功能点分组",
+      "description": "单个产品功能点的保姆教程，按能力模块分组"
     },
     {
-      "id": "ai-video",
-      "label": "AI视频",
-      "description": "商品视频生成、批量视频和生成记录相关教程"
-    },
-    {
-      "id": "playbook",
+      "id": "playbooks",
       "label": "玩法组合",
-      "description": "多个功能串成客户能理解的一条龙玩法"
+      "description": "多个功能串成客户能理解的一条龙玩法，可持续新增多个玩法"
     }
   ],
   "tutorials": [
     {
       "id": "ai-image-optimize-nanny",
-      "tabId": "ai-image",
+      "tabId": "feature-groups",
+      "groupId": "ai-image",
+      "groupLabel": "AI图片",
       "title": "AI优化商品图",
       "subtitle": "保姆教程：从入口、平台、店铺、图片位置到确认发布",
       "templateType": "operation-tutorial",
@@ -38,7 +35,9 @@
     },
     {
       "id": "ai-batch-video-nanny",
-      "tabId": "ai-video",
+      "tabId": "feature-groups",
+      "groupId": "ai-video",
+      "groupLabel": "AI视频",
       "title": "AI批量生成视频",
       "subtitle": "保姆教程：选择平台、店铺、商品并生成视频",
       "templateType": "operation-tutorial",
@@ -55,7 +54,9 @@
     },
     {
       "id": "ai-image-to-video-playbook",
-      "tabId": "playbook",
+      "tabId": "playbooks",
+      "groupId": "ai-image-to-video",
+      "groupLabel": "AI优化图到AI视频",
       "title": "AI优化图到AI批量生成视频",
       "subtitle": "玩法组合：优化商品图、确认发布，再批量生成商品视频",
       "templateType": "playbook-chain",

@@ -262,7 +262,11 @@ function renderHubHtml(publicData) {
     .layout { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: 18px; }
     .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 10px 24px rgba(16, 24, 40, .06); }
     .list { padding: 14px; }
+    .group { margin: 0 0 18px; }
+    .group:last-child { margin-bottom: 0; }
+    .group-title { margin: 2px 2px 10px; color: #344054; font-size: 13px; font-weight: 900; }
     .tutorial { width: 100%; margin: 0 0 12px; text-align: left; }
+    .tutorial:last-child { margin-bottom: 0; }
     .tutorial.active { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(37, 99, 235, .14); }
     .tutorial strong, .tutorial span { display: block; }
     .tutorial span { margin-top: 6px; color: var(--muted); font-size: 13px; line-height: 1.5; }
@@ -283,7 +287,7 @@ function renderHubHtml(publicData) {
 <body>
   <header>
     <h1>客户教程视频审片台</h1>
-    <p>按产品功能和玩法组合管理教程。当前页面只生成当前教程，避免镜头互相串台。</p>
+    <p>按功能点分组和玩法组合管理教程。当前页面只生成当前教程，避免镜头互相串台。</p>
   </header>
   <main>
     <div class="tabs" id="tabs"></div>
@@ -305,6 +309,24 @@ function renderHubHtml(publicData) {
     }
     function tutorialsForTab(tabId) {
       return data.tutorials.filter(tutorial => tutorial.tabId === tabId);
+    }
+    function groupedTutorialsForTab(tabId) {
+      const groups = [];
+      const byId = new Map();
+      tutorialsForTab(tabId).forEach(tutorial => {
+        const groupId = tutorial.groupId || tutorial.tabId;
+        if (!byId.has(groupId)) {
+          const group = {
+            id: groupId,
+            label: tutorial.groupLabel || data.tabs.find(tab => tab.id === tabId)?.label || '未分组',
+            tutorials: []
+          };
+          byId.set(groupId, group);
+          groups.push(group);
+        }
+        byId.get(groupId).tutorials.push(tutorial);
+      });
+      return groups;
     }
     async function post(path, body = {}) {
       const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -335,7 +357,7 @@ function renderHubHtml(publicData) {
         render();
       }));
 
-      listEl.innerHTML = tutorialsForTab(state.tabId).map(tutorial => '<button class="tutorial ' + (tutorial.id === state.tutorialId ? 'active' : '') + '" data-id="' + escapeHtml(tutorial.id) + '"><strong>' + escapeHtml(tutorial.title) + '</strong><span>' + escapeHtml(tutorial.subtitle) + '</span></button>').join('');
+      listEl.innerHTML = groupedTutorialsForTab(state.tabId).map(group => '<div class="group"><div class="group-title">' + escapeHtml(group.label) + '</div>' + group.tutorials.map(tutorial => '<button class="tutorial ' + (tutorial.id === state.tutorialId ? 'active' : '') + '" data-id="' + escapeHtml(tutorial.id) + '"><strong>' + escapeHtml(tutorial.title) + '</strong><span>' + escapeHtml(tutorial.subtitle) + '</span></button>').join('') + '</div>').join('') || '<p>暂无教程</p>';
       listEl.querySelectorAll('.tutorial').forEach(button => button.addEventListener('click', () => {
         state.tutorialId = button.dataset.id;
         render();
