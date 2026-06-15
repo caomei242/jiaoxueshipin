@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "tabs": [
+    {
+      "id": "ai-image",
+      "label": "AI图片",
+      "description": "商品图、主图、SKU图和品牌展示相关教程"
+    },
+    {
+      "id": "ai-video",
+      "label": "AI视频",
+      "description": "商品视频生成、批量视频和生成记录相关教程"
+    },
+    {
+      "id": "playbook",
+      "label": "玩法组合",
+      "description": "多个功能串成客户能理解的一条龙玩法"
+    }
+  ],
+  "tutorials": [
+    {
+      "id": "ai-image-optimize-nanny",
+      "tabId": "ai-image",
+      "title": "AI优化商品图",
+      "subtitle": "保姆教程：从入口、平台、店铺、图片位置到确认发布",
+      "templateType": "operation-tutorial",
+      "status": "active",
+      "statusLabel": "可审片",
+      "targetStore": "道理门",
+      "outputDir": "/Users/gd/Desktop/主业/客户教程视频/稿定商品-AI优化商品图/2026-05-29-horizontal-v7",
+      "boardUrl": "http://127.0.0.1:3829/",
+      "videoPath": "videos/nanny-horizontal-storyboard.mp4",
+      "build": {
+        "enabled": true,
+        "command": "./build_storyboard_video.sh",
+        "args": ["--output", "<outputDir>", "--style", "nanny"]
+      }
+    },
+    {
+      "id": "ai-batch-video-nanny",
+      "tabId": "ai-video",
+      "title": "AI批量生成视频",
+      "subtitle": "保姆教程：选择平台、店铺、商品并生成视频",
+      "templateType": "operation-tutorial",
+      "status": "needs-capture",
+      "statusLabel": "待采集",
+      "targetStore": "道理门",
+      "outputDir": "/Users/gd/Desktop/主业/客户教程视频/稿定商品-AI批量生成视频/2026-06-15-horizontal-v1",
+      "boardUrl": "",
+      "videoPath": "videos/nanny-horizontal-storyboard.mp4",
+      "build": {
+        "enabled": false,
+        "reason": "AI批量生成视频的真实操作截图和分镜还没有采集，不能用假画面出片。"
+      }
+    },
+    {
+      "id": "ai-image-to-video-playbook",
+      "tabId": "playbook",
+      "title": "AI优化图到AI批量生成视频",
+      "subtitle": "玩法组合：优化商品图、确认发布，再批量生成商品视频",
+      "templateType": "playbook-chain",
+      "status": "active",
+      "statusLabel": "可审片",
+      "targetStore": "道理门",
+      "outputDir": "/Users/gd/Desktop/主业/客户教程视频/稿定商品-AI优化商品图/2026-06-10-ai-image-to-video-playbook",
+      "boardUrl": "http://127.0.0.1:3839/",
+      "videoPath": "videos/ai-image-to-video-playbook-horizontal.mp4",
+      "build": {
+        "enabled": true,
+        "command": "./build_playbook_video.sh",
+        "args": ["--output", "<outputDir>"]
+      }
+    }
+  ]
+}
