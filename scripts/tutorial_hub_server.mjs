@@ -8,6 +8,7 @@ import { loadTutorialCatalog, findTutorial, publicCatalog } from '../lib/tutoria
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '..');
+const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
 
 function readFlagValue(argv, index, flag) {
   const value = argv[index + 1];
@@ -40,33 +41,97 @@ function parseArgs(argv) {
   return flags;
 }
 
-function noCacheHeaders(type = 'text/plain; charset=utf-8') {
-  return {
+function parseHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+function localOrigin(host, port) {
+  if (!host) return null;
+  const normalizedHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+  return `http://${normalizedHost}:${port}`;
+}
+
+function requestHostOrigin(req) {
+  try {
+    const url = new URL(`http://${req.headers.host || `${flags.host}:${flags.port}`}`);
+    return localOrigin(url.hostname, flags.port);
+  } catch {
+    return null;
+  }
+}
+
+function allowedOrigins(req) {
+  const origins = new Set([
+    localOrigin('localhost', flags.port),
+    localOrigin('127.0.0.1', flags.port),
+    requestHostOrigin(req)
+  ]);
+  if (flags.host !== '0.0.0.0') {
+    origins.add(localOrigin(flags.host, flags.port));
+  }
+  origins.delete(null);
+  return origins;
+}
+
+function originAllowed(req) {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  const parsed = parseHttpUrl(origin);
+  return Boolean(parsed) && allowedOrigins(req).has(parsed.origin);
+}
+
+function noCacheHeaders(type = 'text/plain; charset=utf-8', req = null) {
+  const headers = {
     'Content-Type': type,
     'Cache-Control': 'no-store, no-cache, must-revalidate',
     'Pragma': 'no-cache',
     'Expires': '0',
-    'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type'
   };
+  if (req?.headers.origin && originAllowed(req)) {
+    headers['Access-Control-Allow-Origin'] = req.headers.origin;
+    headers.Vary = 'Origin';
+  }
+  return headers;
 }
 
-function sendJson(res, status, data) {
-  res.writeHead(status, noCacheHeaders('application/json; charset=utf-8'));
+function sendJson(req, res, status, data) {
+  res.writeHead(status, noCacheHeaders('application/json; charset=utf-8', req));
   res.end(`${JSON.stringify(data, null, 2)}\n`);
 }
 
-function sendText(res, status, text, type = 'text/plain; charset=utf-8') {
-  res.writeHead(status, noCacheHeaders(type));
+function sendText(req, res, status, text, type = 'text/plain; charset=utf-8') {
+  res.writeHead(status, noCacheHeaders(type, req));
   res.end(text);
 }
 
 async function readRequestJson(req) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > MAX_REQUEST_BODY_BYTES) {
+      const error = new Error('request body too large');
+      error.status = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
   const text = Buffer.concat(chunks).toString('utf8').trim();
-  return text ? JSON.parse(text) : {};
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    const error = new Error('invalid JSON request body');
+    error.status = 400;
+    throw error;
+  }
 }
 
 function ensureInsideOutputDir(tutorial, targetPath) {
@@ -175,7 +240,7 @@ async function openTarget(tutorial, payload = {}) {
 }
 
 function renderHubHtml(publicData) {
-  const dataJson = JSON.stringify(publicData).replaceAll('</script>', '<\\/script>');
+  const dataJson = JSON.stringify(publicData).replaceAll('<', '\\u003c');
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -282,7 +347,12 @@ function renderHubHtml(publicData) {
         return;
       }
       const statusClass = tutorial.status === 'needs-capture' ? 'needs-capture' : '';
-      const boardAction = tutorial.boardUrl ? '<a class="action primary" href="' + escapeHtml(tutorial.boardUrl) + '" target="_blank" rel="noreferrer">进入审片</a>' : '<button disabled>待采集后开放审片</button>';
+      let boardUrl = '';
+      try {
+        const parsed = new URL(tutorial.boardUrl || '');
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') boardUrl = parsed.href;
+      } catch {}
+      const boardAction = boardUrl ? '<a class="action primary" href="' + escapeHtml(boardUrl) + '" target="_blank" rel="noreferrer">进入审片</a>' : '<button disabled>待采集后开放审片</button>';
       const buildButton = tutorial.buildEnabled ? '<button class="primary" data-build="' + escapeHtml(tutorial.id) + '">一键生成当前教程</button>' : '<button disabled>暂不能生成</button>';
       const reason = tutorial.buildDisabledReason ? '<div class="note">' + escapeHtml(tutorial.buildDisabledReason) + '</div>' : '';
       const videoExists = tutorial.videoInfo?.exists ? '已生成' : '未生成';
@@ -319,6 +389,7 @@ async function publicCatalogWithVideoInfo(catalog) {
   const data = publicCatalog(catalog);
   data.tutorials = await Promise.all(data.tutorials.map(async tutorial => ({
     ...tutorial,
+    boardUrl: parseHttpUrl(tutorial.boardUrl)?.href || '',
     videoInfo: await videoInfoFor(findTutorial(catalog, tutorial.id))
   })));
   return data;
@@ -330,21 +401,31 @@ let buildRunning = false;
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, noCacheHeaders());
+      if (!originAllowed(req)) {
+        res.writeHead(403, noCacheHeaders('application/json; charset=utf-8', req));
+        res.end(`${JSON.stringify({ ok: false, error: 'origin not allowed' }, null, 2)}\n`);
+        return;
+      }
+      res.writeHead(204, noCacheHeaders('text/plain; charset=utf-8', req));
       res.end();
       return;
     }
 
     const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
+    if (req.method === 'POST' && !originAllowed(req)) {
+      sendJson(req, res, 403, { ok: false, error: 'origin not allowed' });
+      return;
+    }
+
     const catalog = await loadTutorialCatalog();
 
     if (req.method === 'GET' && url.pathname === '/') {
-      sendText(res, 200, renderHubHtml(await publicCatalogWithVideoInfo(catalog)), 'text/html; charset=utf-8');
+      sendText(req, res, 200, renderHubHtml(await publicCatalogWithVideoInfo(catalog)), 'text/html; charset=utf-8');
       return;
     }
 
     if (req.method === 'GET' && url.pathname === '/api/tutorials') {
-      sendJson(res, 200, await publicCatalogWithVideoInfo(catalog));
+      sendJson(req, res, 200, await publicCatalogWithVideoInfo(catalog));
       return;
     }
 
@@ -352,11 +433,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && buildMatch) {
       const tutorial = findTutorial(catalog, buildMatch[1]);
       if (!tutorial) {
-        sendJson(res, 404, { ok: false, error: '教程不存在' });
+        sendJson(req, res, 404, { ok: false, error: '教程不存在' });
         return;
       }
       if (!tutorial.build.enabled) {
-        sendJson(res, 409, {
+        sendJson(req, res, 409, {
           ok: false,
           error: '当前教程暂不能生成',
           reason: tutorial.build.reason || 'build disabled'
@@ -364,14 +445,14 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       if (buildRunning) {
-        sendJson(res, 409, { ok: false, error: '已有视频正在生成，请稍后再试。' });
+        sendJson(req, res, 409, { ok: false, error: '已有视频正在生成，请稍后再试。' });
         return;
       }
 
       buildRunning = true;
       try {
         const result = await runCommand(tutorial.build.command, tutorial.build.args);
-        sendJson(res, 200, {
+        sendJson(req, res, 200, {
           ok: true,
           tutorialId: tutorial.id,
           videoPath: tutorial.videoPath,
@@ -389,16 +470,16 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && openMatch) {
       const tutorial = findTutorial(catalog, openMatch[1]);
       if (!tutorial) {
-        sendJson(res, 404, { ok: false, error: '教程不存在' });
+        sendJson(req, res, 404, { ok: false, error: '教程不存在' });
         return;
       }
-      sendJson(res, 200, await openTarget(tutorial, await readRequestJson(req)));
+      sendJson(req, res, 200, await openTarget(tutorial, await readRequestJson(req)));
       return;
     }
 
-    sendText(res, 404, 'Not found');
+    sendText(req, res, 404, 'Not found');
   } catch (error) {
-    sendJson(res, error.status || 500, {
+    sendJson(req, res, error.status || 500, {
       ok: false,
       error: error.message || String(error),
       stdout: error.stdout,
