@@ -45,13 +45,14 @@
       "status": "needs-capture",
       "statusLabel": "待采集",
       "targetStore": "道理门",
+      "captureUrl": "https://gdsp-stage.huanleguang.com/app-pim#/ai/video/generate?platform_id=6&tab=",
       "outputDir": "/Users/gd/Desktop/主业/客户教程视频/稿定商品-AI批量生成视频/2026-06-15-horizontal-v1",
       "boardUrl": "",
       "boardRoute": "/tutorial/ai-batch-video-nanny/starter",
       "videoPath": "videos/nanny-horizontal-storyboard.mp4",
       "start": {
         "enabled": true,
-        "label": "开始制作保姆教程",
+        "label": "创建采集清单",
         "script": "scripts/start_tutorial_workspace.mjs",
         "args": ["--tutorial", "ai-batch-video-nanny"]
       },

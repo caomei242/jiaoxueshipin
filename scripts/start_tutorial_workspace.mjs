@@ -158,23 +158,37 @@ function renderStarterBoard(tutorial, scenes, reportPath, officialDocs) {
           <p><b>口播草稿：</b>${htmlEscape(scene.voiceover)}</p>
         </div>
       </article>`).join('');
+  const captureUrl = String(tutorial.captureUrl || '').trim();
+  const captureAction = captureUrl
+    ? `<a class="primary" href="${htmlEscape(captureUrl)}" target="_blank" rel="noreferrer">打开真实后台采集</a>`
+    : '<button type="button" disabled>暂未配置后台采集入口</button>';
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${htmlEscape(tutorial.title)}制作板</title>
+  <title>${htmlEscape(tutorial.title)}采集清单</title>
   <style>
-    :root { color-scheme: light; --bg: #f4f7fb; --panel: #fff; --ink: #111827; --muted: #667085; --line: #d0d5dd; --brand: #2563eb; --warn: #c2410c; }
+    :root { color-scheme: light; --bg: #f4f7fb; --panel: #fff; --ink: #111827; --muted: #667085; --line: #d0d5dd; --brand: #2563eb; --warn: #c2410c; --ok: #16803c; }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; color: var(--ink); background: var(--bg); }
     header { padding: 24px 28px; color: white; background: #111827; }
     h1 { margin: 0 0 8px; font-size: 24px; }
     header p { margin: 0; color: #cbd5e1; }
     main { padding: 22px 28px 36px; }
-    .notice, .scene { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 10px 24px rgba(16, 24, 40, .06); }
+    .notice, .scene, .toolbar { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 10px 24px rgba(16, 24, 40, .06); }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; padding: 14px; }
+    a, button { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; border: 1px solid var(--line); border-radius: 8px; padding: 9px 13px; color: var(--ink); background: white; font-weight: 800; text-decoration: none; }
+    a.primary { border-color: var(--brand); color: white; background: var(--brand); }
+    button:disabled { opacity: .45; }
+    .path-pill { display: inline-flex; min-height: 38px; align-items: center; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; color: #475569; background: #f8fafc; }
     .notice { margin-bottom: 16px; padding: 16px; border-left: 4px solid var(--warn); }
+    .notice h2 { margin: 0 0 8px; font-size: 18px; color: #9a3412; }
     .notice p { margin: 6px 0; color: #7c2d12; line-height: 1.7; }
+    .status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0 0; }
+    .status-grid div { border: 1px solid #fed7aa; border-radius: 8px; padding: 10px; background: #fff7ed; }
+    .status-grid b { display: block; margin-bottom: 4px; color: #9a3412; }
+    .status-grid span { color: #7c2d12; }
     .official-docs { margin-bottom: 16px; padding: 16px; border: 1px solid #bfdbfe; border-radius: 8px; background: #eff6ff; }
     .official-docs h2 { margin: 0 0 8px; }
     .official-docs p { margin: 0 0 8px; color: #1e3a8a; }
@@ -186,18 +200,28 @@ function renderStarterBoard(tutorial, scenes, reportPath, officialDocs) {
     h2 { margin: 0 0 8px; font-size: 18px; }
     p { margin: 8px 0; color: var(--muted); line-height: 1.65; }
     code { padding: 2px 5px; border-radius: 5px; background: #eef2ff; }
+    @media (max-width: 760px) { .status-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <header>
-    <h1>${htmlEscape(tutorial.title)}制作板</h1>
-    <p>${htmlEscape(tutorial.subtitle)}</p>
+    <h1>${htmlEscape(tutorial.title)}采集清单</h1>
+    <p>这页是给我们采集真实后台截图用的，不是客户最终视频，也不是正式审片台。</p>
   </header>
   <main>
+    <nav class="toolbar">
+      <a href="/">返回客户教程视频片台</a>
+      ${captureAction}
+      <span class="path-pill">报告：<code>${htmlEscape(reportPath)}</code></span>
+    </nav>
     <section class="notice">
-      <p><b>当前状态：</b>已经可以开始制作，但还没有真实操作截图，所以暂时不能一键出片。</p>
-      <p><b>下一步：</b>按下面镜头清单去真实后台采集截图；采集完成后再生成正式可批改审片台。</p>
-      <p><b>报告：</b><code>${htmlEscape(reportPath)}</code></p>
+      <h2>当前不能直接出片</h2>
+      <p>这个功能还缺真实操作截图。下面只是采集顺序，目的是提醒我们要拍哪些下拉、勾选、生成结果画面。</p>
+      <div class="status-grid">
+        <div><b>现在这页</b><span>采集清单</span></div>
+        <div><b>下一步</b><span>打开真实后台逐镜截图</span></div>
+        <div><b>截图齐后</b><span>再生成可批改审片台</span></div>
+      </div>
     </section>
     ${renderOfficialDocsBlock(officialDocs)}
     ${rows}

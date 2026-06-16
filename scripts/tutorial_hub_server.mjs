@@ -604,17 +604,25 @@ function renderHubHtml(publicData) {
       return '<details><summary>查看技术日志</summary><pre>' + escapeHtml(raw) + '</pre></details>';
     }
     function renderStartResult(id, result) {
+      const tutorial = tutorialById(id) || {};
       const started = parsedCommandResult(result);
       const starterUrl = result.starterUrl || ('/tutorial/' + id + '/starter');
-      const sceneText = started.sceneCount ? '已创建 ' + started.sceneCount + ' 个拍摄镜头。' : '制作板和采集清单已经准备好。';
+      const needsCapture = tutorial.status === 'needs-capture';
+      const resultTitle = needsCapture ? '采集清单已创建' : '制作板已创建';
+      const sceneText = started.sceneCount
+        ? '已创建 ' + started.sceneCount + (needsCapture ? ' 个采集镜头。' : ' 个拍摄镜头。')
+        : (needsCapture ? '采集清单已经准备好。' : '制作板和采集清单已经准备好。');
+      const nextText = needsCapture ? '下一步按清单去真实后台采集截图。' : '下一步可以直接进入制作板批改镜头。';
+      const boardLabel = needsCapture ? '采集清单' : '制作板';
+      const primaryText = needsCapture ? '查看采集清单' : '进入制作板';
       setResult(
-        '<div class="result-title">制作板已创建</div>' +
-        '<div>' + escapeHtml(sceneText) + '下一步可以直接进入制作板批改镜头。</div>' +
+        '<div class="result-title">' + escapeHtml(resultTitle) + '</div>' +
+        '<div>' + escapeHtml(sceneText + nextText) + '</div>' +
         renderPath('输出目录', result.outputDir) +
-        renderPath('制作板', started.boardPath) +
+        renderPath(boardLabel, started.boardPath) +
         renderPath('采集报告', started.reportPath) +
         '<div class="result-actions">' +
-        '<a class="primary-link" href="' + escapeHtml(starterUrl) + '?v=' + Date.now() + '" target="_blank" rel="noreferrer">进入制作板</a>' +
+        '<a class="primary-link" href="' + escapeHtml(starterUrl) + '?v=' + Date.now() + '" target="_blank" rel="noreferrer">' + escapeHtml(primaryText) + '</a>' +
         '<button data-result-open-folder="' + escapeHtml(id) + '">打开视频文件夹</button>' +
         '</div>' +
         renderTechnicalLog(result),
@@ -716,7 +724,7 @@ function renderHubHtml(publicData) {
       const boardAction = boardUrl
         ? '<a class="action primary" href="' + escapeHtml(boardUrl) + '" target="_blank" rel="noreferrer">进入审片</a>'
         : boardRoute
-          ? '<a class="action" href="' + escapeHtml(boardRoute) + '?v=' + Date.now() + '" target="_blank" rel="noreferrer">进入制作板</a>'
+          ? '<a class="action" href="' + escapeHtml(boardRoute) + '?v=' + Date.now() + '" target="_blank" rel="noreferrer">' + (tutorial.status === 'needs-capture' ? '查看采集清单' : '进入制作板') + '</a>'
           : '<button disabled>待采集后开放审片</button>';
       const startAction = tutorial.startEnabled
         ? '<button class="primary" data-start="' + escapeHtml(tutorial.id) + '">' + escapeHtml(tutorial.startLabel || '开始制作') + '</button>'
@@ -726,6 +734,10 @@ function renderHubHtml(publicData) {
       const buildButton = tutorial.buildEnabled ? '<button class="primary" data-build="' + escapeHtml(tutorial.id) + '">一键生成当前教程</button>' : '<button disabled>素材齐后生成</button>';
       const reason = tutorial.buildDisabledReason ? '<div class="note">' + escapeHtml(tutorial.buildDisabledReason) + '</div>' : '';
       const videoExists = tutorial.videoInfo?.exists ? '已生成' : '未生成';
+      const videoActions = tutorial.videoInfo?.exists
+        ? '<button data-open-video="' + escapeHtml(tutorial.id) + '">打开视频</button>' +
+          '<button data-reveal-video="' + escapeHtml(tutorial.id) + '">访达定位</button>'
+        : '<button disabled>打开视频</button><button disabled>访达定位</button>';
       detailEl.innerHTML = '<span class="badge ' + statusClass + '">' + escapeHtml(tutorial.statusLabel) + '</span>' +
         '<h2>' + escapeHtml(tutorial.title) + '</h2>' +
         '<p>' + escapeHtml(tutorial.subtitle) + '</p>' +
@@ -737,8 +749,7 @@ function renderHubHtml(publicData) {
         '<div><b>视频路径</b><span>' + escapeHtml(tutorial.videoPath) + '</span></div>' +
         '</div>' +
         '<div class="actions">' + startAction + boardAction + buildButton +
-        '<button data-open-video="' + escapeHtml(tutorial.id) + '">打开视频</button>' +
-        '<button data-reveal-video="' + escapeHtml(tutorial.id) + '">访达定位</button>' +
+        videoActions +
         '<button data-open-folder="' + escapeHtml(tutorial.id) + '">打开视频文件夹</button>' +
         '</div>' +
         renderOfficialDocs(tutorial) +
