@@ -5,6 +5,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { loadTutorialCatalog, findTutorial, publicCatalog } from '../lib/tutorials/catalog.mjs';
+import { loadOfficialDocs, publicOfficialDocs } from '../lib/tutorials/official-docs.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -329,6 +330,11 @@ function renderHubHtml(publicData) {
     .meta b { display: block; margin-bottom: 4px; color: #475467; font-size: 12px; }
     .meta span { display: block; overflow-wrap: anywhere; font-size: 13px; }
     .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+    .docs { margin: 16px 0 0; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px; background: #eff6ff; }
+    .docs h3 { margin: 0 0 8px; font-size: 15px; color: #1e3a8a; }
+    .docs a { color: #1d4ed8; font-weight: 800; overflow-wrap: anywhere; }
+    .docs ul { margin: 8px 0 0; padding-left: 18px; color: #334155; line-height: 1.55; }
+    .docs li { margin: 4px 0; }
     .note { margin-top: 18px; border-left: 4px solid var(--warn); padding: 12px; color: #7c2d12; background: #fff7ed; line-height: 1.65; }
     pre { max-height: 220px; overflow: auto; border-radius: 8px; padding: 12px; color: #dbeafe; background: #0b1220; white-space: pre-wrap; }
     @media (max-width: 760px) { main { padding: 16px; } .layout, .meta { grid-template-columns: 1fr; } }
@@ -407,6 +413,17 @@ function renderHubHtml(publicData) {
       try { setLog(JSON.stringify(await post('/api/tutorial/' + id + '/open', { target, action }), null, 2)); }
       catch (error) { setLog(error.message); }
     }
+    function renderOfficialDocs(tutorial) {
+      const docs = Array.isArray(tutorial.officialDocs) ? tutorial.officialDocs : [];
+      if (!docs.length) return '';
+      return docs.map(doc => {
+        const facts = (doc.scriptCoverageChecklist || doc.factSummary || []).slice(0, 3);
+        return '<section class="docs"><h3>官方文档参考</h3>' +
+          '<a href="' + escapeHtml(doc.url) + '" target="_blank" rel="noreferrer">' + escapeHtml(doc.title) + '</a>' +
+          (facts.length ? '<ul>' + facts.map(fact => '<li>' + escapeHtml(fact) + '</li>').join('') + '</ul>' : '') +
+          '</section>';
+      }).join('');
+    }
     function render() {
       if (!state.tutorialId) state.tutorialId = tutorialsForTab(state.tabId)[0]?.id || '';
       tabsEl.innerHTML = data.tabs.map(tab => '<button class="tab ' + (tab.id === state.tabId ? 'active' : '') + '" data-tab="' + escapeHtml(tab.id) + '">' + escapeHtml(tab.label) + '</button>').join('');
@@ -462,6 +479,7 @@ function renderHubHtml(publicData) {
         '<button data-reveal-video="' + escapeHtml(tutorial.id) + '">访达定位</button>' +
         '<button data-open-folder="' + escapeHtml(tutorial.id) + '">打开视频文件夹</button>' +
         '</div>' +
+        renderOfficialDocs(tutorial) +
         reason +
         '<pre id="log">等待操作</pre>';
 
@@ -479,9 +497,11 @@ function renderHubHtml(publicData) {
 
 async function publicCatalogWithVideoInfo(catalog) {
   const data = publicCatalog(catalog);
+  const officialDocs = await loadOfficialDocs();
   data.tutorials = await Promise.all(data.tutorials.map(async tutorial => ({
     ...tutorial,
     boardUrl: parseHttpUrl(tutorial.boardUrl)?.href || '',
+    officialDocs: publicOfficialDocs(officialDocs, tutorial.officialDocIds),
     videoInfo: await videoInfoFor(findTutorial(catalog, tutorial.id))
   })));
   return data;

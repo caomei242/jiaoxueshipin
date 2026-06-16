@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import path from 'node:path';
 import { loadTutorialCatalog, publicCatalog } from '../lib/tutorials/catalog.mjs';
+import { findOfficialDocs, loadOfficialDocs } from '../lib/tutorials/official-docs.mjs';
 
 const catalog = await loadTutorialCatalog();
 const publicData = publicCatalog(catalog);
+const officialDocsData = await loadOfficialDocs();
 const requiredIds = [
   'ai-image-optimize-nanny',
   'ai-batch-video-nanny',
@@ -46,6 +48,11 @@ for (const tutorial of publicData.tutorials) {
 
   if (!tutorial.buildEnabled && !tutorial.buildDisabledReason) {
     throw new Error(`disabled tutorial ${tutorial.id} missing disabled reason`);
+  }
+
+  const officialDocs = findOfficialDocs(officialDocsData, tutorial.officialDocIds);
+  if (officialDocs.length !== tutorial.officialDocIds.length) {
+    throw new Error(`tutorial ${tutorial.id} references missing official doc`);
   }
 }
 

@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findTutorial, loadTutorialCatalog } from '../lib/tutorials/catalog.mjs';
+import { findOfficialDocs, loadOfficialDocs } from '../lib/tutorials/official-docs.mjs';
 import { ensureDir, writeJson } from '../lib/fs-utils.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -131,7 +132,22 @@ function plannedScenesFor(tutorial) {
   ];
 }
 
-function renderStarterBoard(tutorial, scenes, reportPath) {
+function renderOfficialDocsBlock(officialDocs) {
+  if (!officialDocs.length) return '';
+  const items = officialDocs.map(doc => `
+        <li>
+          <b>${htmlEscape(doc.title)}</b>
+          <span>${htmlEscape(doc.url)}</span>
+        </li>`).join('');
+  return `
+      <div class="official-docs">
+        <h2>官方文档参考</h2>
+        <p>下面文档只作为流程、术语和注意事项底稿；正式画面仍以真实后台截图为准。</p>
+        <ul>${items}</ul>
+      </div>`;
+}
+
+function renderStarterBoard(tutorial, scenes, reportPath, officialDocs) {
   const rows = scenes.map((scene, index) => `
       <article class="scene">
         <div class="num">${index + 1}</div>
@@ -159,6 +175,12 @@ function renderStarterBoard(tutorial, scenes, reportPath) {
     .notice, .scene { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 10px 24px rgba(16, 24, 40, .06); }
     .notice { margin-bottom: 16px; padding: 16px; border-left: 4px solid var(--warn); }
     .notice p { margin: 6px 0; color: #7c2d12; line-height: 1.7; }
+    .official-docs { margin-bottom: 16px; padding: 16px; border: 1px solid #bfdbfe; border-radius: 8px; background: #eff6ff; }
+    .official-docs h2 { margin: 0 0 8px; }
+    .official-docs p { margin: 0 0 8px; color: #1e3a8a; }
+    .official-docs ul { margin: 0; padding-left: 18px; color: #1e40af; }
+    .official-docs li { margin: 5px 0; }
+    .official-docs span { display: block; color: #475569; font-size: 13px; word-break: break-all; }
     .scene { display: grid; grid-template-columns: 44px 1fr; gap: 12px; margin-bottom: 12px; padding: 16px; }
     .num { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 999px; color: white; background: var(--brand); font-weight: 900; }
     h2 { margin: 0 0 8px; font-size: 18px; }
@@ -177,6 +199,7 @@ function renderStarterBoard(tutorial, scenes, reportPath) {
       <p><b>下一步：</b>按下面镜头清单去真实后台采集截图；采集完成后再生成正式可批改审片台。</p>
       <p><b>报告：</b><code>${htmlEscape(reportPath)}</code></p>
     </section>
+    ${renderOfficialDocsBlock(officialDocs)}
     ${rows}
   </main>
 </body>
@@ -187,6 +210,8 @@ const flags = parseArgs(process.argv.slice(2));
 const catalog = await loadTutorialCatalog();
 const tutorial = findTutorial(catalog, flags.tutorialId);
 if (!tutorial) throw new Error(`tutorial not found: ${flags.tutorialId}`);
+const officialDocsData = await loadOfficialDocs();
+const officialDocs = findOfficialDocs(officialDocsData, tutorial.officialDocIds);
 
 const dirs = {
   output: tutorial.outputDir,
@@ -209,6 +234,7 @@ const workspaceManifest = {
   title: tutorial.title,
   subtitle: tutorial.subtitle,
   targetStore: tutorial.targetStore,
+  officialDocs,
   outputDir: tutorial.outputDir,
   status: 'started-needs-real-capture',
   rootDir: ROOT_DIR,
@@ -227,6 +253,7 @@ await writeJson(path.join(dirs.capture, 'capture-plan.json'), {
     useRealOperationScreenshots: true,
     noFakeFrames: true
   },
+  officialDocs,
   scenes
 });
 await writeJson(path.join(dirs.storyboard, 'starter-scenes.json'), { createdAt, scenes });
@@ -247,7 +274,7 @@ const voiceoverDraft = [
 ].join('\n');
 
 await fs.writeFile(path.join(dirs.scripts, 'nanny-draft.md'), voiceoverDraft, 'utf8');
-await fs.writeFile(path.join(dirs.storyboard, 'shooting-board.html'), renderStarterBoard(tutorial, scenes, reportPath), 'utf8');
+await fs.writeFile(path.join(dirs.storyboard, 'shooting-board.html'), renderStarterBoard(tutorial, scenes, reportPath, officialDocs), 'utf8');
 
 const report = [
   `# ${tutorial.title} 制作开工报告`,
@@ -256,6 +283,7 @@ const report = [
   `- 教程 ID：${tutorial.id}`,
   `- 测试店：${tutorial.targetStore}`,
   `- 输出目录：${tutorial.outputDir}`,
+  ...officialDocs.flatMap(doc => [`- 官方文档：${doc.title}｜${doc.url}`]),
   '- 当前状态：已创建制作工作区，待采集真实后台截图。',
   '- 安全边界：不自动充值，不自动发布，不用假画面出片。',
   '',

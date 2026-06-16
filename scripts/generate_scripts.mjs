@@ -5,11 +5,14 @@ import { parseArgs } from '../lib/config.mjs';
 import { ensureDir, outputPath, readJson, writeJson } from '../lib/fs-utils.mjs';
 import { estimateDuration, formatSrtTime } from '../lib/text-utils.mjs';
 import { buildStoryboards } from '../lib/storyboards.mjs';
+import { loadOfficialDocs, publicOfficialDocByUrl } from '../lib/tutorials/official-docs.mjs';
 
 const flags = parseArgs(process.argv.slice(2));
 const capture = await readJson(outputPath(flags.outputDir, 'capture', 'capture.json'));
 const scriptDir = outputPath(flags.outputDir, 'scripts');
 await ensureDir(scriptDir);
+const officialDocsData = await loadOfficialDocs();
+const officialDoc = publicOfficialDocByUrl(officialDocsData, capture.officialDocUrl);
 
 const screenshotById = new Map(capture.screenshots.map(shot => [shot.id, shot]));
 const storyboard = buildStoryboards(capture);
@@ -56,6 +59,7 @@ const scripts = {
   createdAt: new Date().toISOString(),
   captureSummary: {
     dryRun: capture.dryRun,
+    officialDocUrl: capture.officialDocUrl,
     targetTestStore: capture.targetTestStore,
     degraded: capture.safety.degraded,
     reasons: capture.safety.reasons,
@@ -63,6 +67,7 @@ const scripts = {
     generatedResult: capture.safety.generatedResult,
     clickedPublish: capture.safety.clickedPublish
   },
+  officialDoc,
   variants: [
     buildStyle('nanny', '保姆级'),
     buildStyle('shortform', '短视频干货风')
