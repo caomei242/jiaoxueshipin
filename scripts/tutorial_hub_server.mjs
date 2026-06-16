@@ -336,7 +336,18 @@ function renderHubHtml(publicData) {
     .docs ul { margin: 8px 0 0; padding-left: 18px; color: #334155; line-height: 1.55; }
     .docs li { margin: 4px 0; }
     .note { margin-top: 18px; border-left: 4px solid var(--warn); padding: 12px; color: #7c2d12; background: #fff7ed; line-height: 1.65; }
-    pre { max-height: 220px; overflow: auto; border-radius: 8px; padding: 12px; color: #dbeafe; background: #0b1220; white-space: pre-wrap; }
+    .result-box { margin-top: 18px; border-radius: 8px; padding: 14px; color: #334155; background: #f8fafc; border: 1px solid #e2e8f0; line-height: 1.65; }
+    .result-box.waiting { color: #dbeafe; background: #0b1220; border-color: #0b1220; }
+    .result-box.ok { color: #14532d; background: #f0fdf4; border-color: #bbf7d0; }
+    .result-box.error { color: #7f1d1d; background: #fef2f2; border-color: #fecaca; }
+    .result-title { margin-bottom: 6px; font-size: 16px; font-weight: 900; }
+    .result-path { margin-top: 6px; color: #475569; font-size: 13px; overflow-wrap: anywhere; }
+    .result-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .result-actions button, .result-actions a { border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px 12px; color: #1d4ed8; background: white; font-weight: 800; text-decoration: none; cursor: pointer; }
+    .result-actions .primary-link { border-color: var(--brand); color: white; background: var(--brand); }
+    details { margin-top: 10px; color: #475569; }
+    details summary { cursor: pointer; font-weight: 800; }
+    details pre { max-height: 220px; overflow: auto; border-radius: 8px; padding: 12px; color: #dbeafe; background: #0b1220; white-space: pre-wrap; }
     @media (max-width: 760px) { main { padding: 16px; } .layout, .meta { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -366,6 +377,15 @@ function renderHubHtml(publicData) {
     function tutorialsForTab(tabId) {
       return data.tutorials.filter(tutorial => tutorial.tabId === tabId);
     }
+    function tutorialById(id) {
+      return data.tutorials.find(item => item.id === id);
+    }
+    function templateLabel(type) {
+      return {
+        'operation-tutorial': '保姆操作教程',
+        'playbook-chain': '玩法组合教程'
+      }[type] || type || '未设置';
+    }
     function groupedTutorialsForTab(tabId) {
       const groups = [];
       const byId = new Map();
@@ -390,28 +410,108 @@ function renderHubHtml(publicData) {
       if (!response.ok) throw new Error(json.reason || json.error || response.statusText);
       return json;
     }
-    function setLog(text) {
+    function bindResultActions(root) {
+      root.querySelectorAll('[data-result-open-video]').forEach(button => button.addEventListener('click', event => {
+        openTarget(event.currentTarget.dataset.resultOpenVideo, 'video');
+      }));
+      root.querySelectorAll('[data-result-reveal-video]').forEach(button => button.addEventListener('click', event => {
+        openTarget(event.currentTarget.dataset.resultRevealVideo, 'video', 'reveal');
+      }));
+      root.querySelectorAll('[data-result-open-folder]').forEach(button => button.addEventListener('click', event => {
+        openTarget(event.currentTarget.dataset.resultOpenFolder, 'folder');
+      }));
+    }
+    function setResult(html, stateName = 'waiting') {
       const log = document.getElementById('log');
-      if (log) log.textContent = text;
+      if (!log) return;
+      log.className = 'result-box ' + stateName;
+      log.innerHTML = html;
+      bindResultActions(log);
+    }
+    function setLog(text) {
+      setResult(escapeHtml(text), 'waiting');
+    }
+    function safeParseJson(text) {
+      if (!text) return null;
+      try { return JSON.parse(String(text)); } catch { return null; }
+    }
+    function parsedCommandResult(result) {
+      return safeParseJson(result?.stdout) || {};
+    }
+    function renderPath(label, value) {
+      if (!value) return '';
+      return '<div class="result-path"><b>' + escapeHtml(label) + '：</b>' + escapeHtml(value) + '</div>';
+    }
+    function renderTechnicalLog(result) {
+      const raw = [result?.stdout, result?.stderr].filter(Boolean).join('\\n').trim();
+      if (!raw) return '';
+      return '<details><summary>查看技术日志</summary><pre>' + escapeHtml(raw) + '</pre></details>';
+    }
+    function renderStartResult(id, result) {
+      const started = parsedCommandResult(result);
+      const starterUrl = result.starterUrl || ('/tutorial/' + id + '/starter');
+      const sceneText = started.sceneCount ? '已创建 ' + started.sceneCount + ' 个拍摄镜头。' : '制作板和采集清单已经准备好。';
+      setResult(
+        '<div class="result-title">制作板已创建</div>' +
+        '<div>' + escapeHtml(sceneText) + '下一步可以直接进入制作板批改镜头。</div>' +
+        renderPath('输出目录', result.outputDir) +
+        renderPath('制作板', started.boardPath) +
+        renderPath('采集报告', started.reportPath) +
+        '<div class="result-actions">' +
+        '<a class="primary-link" href="' + escapeHtml(starterUrl) + '?v=' + Date.now() + '" target="_blank" rel="noreferrer">进入制作板</a>' +
+        '<button data-result-open-folder="' + escapeHtml(id) + '">打开视频文件夹</button>' +
+        '</div>' +
+        renderTechnicalLog(result),
+        'ok'
+      );
+    }
+    function renderBuildResult(id, result) {
+      const tutorial = tutorialById(id) || {};
+      const videoPath = result.videoPath || tutorial.videoPath;
+      const fileSize = result.videoInfo?.fileSize ? '视频已生成，文件大小约 ' + Math.round(result.videoInfo.fileSize / 1024 / 1024 * 10) / 10 + ' MB。' : '视频已生成。';
+      setResult(
+        '<div class="result-title">视频生成完成</div>' +
+        '<div>' + escapeHtml(fileSize) + '可以直接打开预览，或者在访达里定位文件。</div>' +
+        renderPath('视频路径', videoPath) +
+        '<div class="result-actions">' +
+        '<button class="primary-link" data-result-open-video="' + escapeHtml(id) + '">打开视频</button>' +
+        '<button data-result-reveal-video="' + escapeHtml(id) + '">访达定位</button>' +
+        '<button data-result-open-folder="' + escapeHtml(id) + '">打开视频文件夹</button>' +
+        '</div>' +
+        renderTechnicalLog(result),
+        'ok'
+      );
+    }
+    function renderOpenResult(result) {
+      const targetText = result.target === 'folder' ? '视频文件夹' : '视频文件';
+      const actionText = result.action === 'reveal' ? '已在访达定位' : '已打开';
+      setResult(
+        '<div class="result-title">' + escapeHtml(actionText + targetText) + '</div>' +
+        renderPath('路径', result.path),
+        'ok'
+      );
+    }
+    function renderError(error) {
+      setResult('<div class="result-title">操作没有完成</div><div>' + escapeHtml(error.message || error) + '</div>', 'error');
     }
     async function buildTutorial(id) {
       setLog('正在生成当前教程视频...');
-      try { setLog(JSON.stringify(await post('/api/tutorial/' + id + '/build'), null, 2)); }
-      catch (error) { setLog(error.message); }
+      try { renderBuildResult(id, await post('/api/tutorial/' + id + '/build')); }
+      catch (error) { renderError(error); }
     }
     async function startTutorial(id) {
       setLog('正在创建制作板和采集清单...');
       try {
         const result = await post('/api/tutorial/' + id + '/start');
-        setLog(JSON.stringify(result, null, 2));
+        renderStartResult(id, result);
       } catch (error) {
-        setLog(error.message);
+        renderError(error);
       }
     }
     async function openTarget(id, target, action = 'open') {
       setLog('正在打开...');
-      try { setLog(JSON.stringify(await post('/api/tutorial/' + id + '/open', { target, action }), null, 2)); }
-      catch (error) { setLog(error.message); }
+      try { renderOpenResult(await post('/api/tutorial/' + id + '/open', { target, action })); }
+      catch (error) { renderError(error); }
     }
     function renderOfficialDocs(tutorial) {
       const docs = Array.isArray(tutorial.officialDocs) ? tutorial.officialDocs : [];
@@ -468,7 +568,7 @@ function renderHubHtml(publicData) {
         '<h2>' + escapeHtml(tutorial.title) + '</h2>' +
         '<p>' + escapeHtml(tutorial.subtitle) + '</p>' +
         '<div class="meta">' +
-        '<div><b>教程类型</b><span>' + escapeHtml(tutorial.templateType) + '</span></div>' +
+        '<div><b>教程类型</b><span>' + escapeHtml(templateLabel(tutorial.templateType)) + '</span></div>' +
         '<div><b>测试店</b><span>' + escapeHtml(tutorial.targetStore) + '</span></div>' +
         '<div><b>视频状态</b><span>' + escapeHtml(videoExists) + '</span></div>' +
         '<div><b>输出目录</b><span>' + escapeHtml(tutorial.outputDir) + '</span></div>' +
@@ -481,7 +581,7 @@ function renderHubHtml(publicData) {
         '</div>' +
         renderOfficialDocs(tutorial) +
         reason +
-        '<pre id="log">等待操作</pre>';
+        '<div id="log" class="result-box waiting">等待操作</div>';
 
       detailEl.querySelector('[data-build]')?.addEventListener('click', event => buildTutorial(event.currentTarget.dataset.build));
       detailEl.querySelector('[data-start]')?.addEventListener('click', event => startTutorial(event.currentTarget.dataset.start));
