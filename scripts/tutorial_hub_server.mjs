@@ -1,15 +1,18 @@
 #!/usr/bin/env node
+import fsNode from 'node:fs';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { evalInTarget, listTargets, navigateTarget, newTarget, sleep } from '../lib/cdp.mjs';
 import { loadTutorialCatalog, findTutorial, publicCatalog } from '../lib/tutorials/catalog.mjs';
 import { loadOfficialDocs, publicOfficialDocs } from '../lib/tutorials/official-docs.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, '..');
 const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
+const managedStoryboardServers = new Map();
 
 function readFlagValue(argv, index, flag) {
   const value = argv[index + 1];
@@ -187,9 +190,158 @@ function runCommand(command, args) {
       error.code = code;
       error.stdout = output;
       error.stderr = errorOutput;
+      error.command = [command, ...args].join(' ');
       reject(error);
     });
   });
+}
+
+function runDetachedServer(command, args, logPath) {
+  fsNode.appendFileSync(logPath, `\n[${new Date().toISOString()}] ${[command, ...args].join(' ')}\n`);
+  const logFd = fsNode.openSync(logPath, 'a');
+  let child;
+  try {
+    child = spawn(command, args, {
+      cwd: ROOT_DIR,
+      env: { ...process.env },
+      detached: true,
+      stdio: ['ignore', logFd, logFd]
+    });
+  } finally {
+    fsNode.closeSync(logFd);
+  }
+  child.unref();
+  managedStoryboardServers.set(logPath, child.pid);
+  return child.pid;
+}
+
+async function fetchJsonWithTimeout(url, timeoutMs = 800) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function waitForHttpOk(url, timeoutMs = 5000) {
+  const startedAt = Date.now();
+  let lastError = null;
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return true;
+    } catch (error) {
+      lastError = error;
+      await sleep(250);
+    }
+  }
+  throw new Error(`审片板服务没有启动成功：${lastError?.message || url}`);
+}
+
+function storyBoardBuildNeedsOpenBoard(tutorial) {
+  return path.basename(String(tutorial.build?.command || '')) === 'build_storyboard_video.sh' && Boolean(tutorial.boardUrl);
+}
+
+function cacheBustedUrl(urlString) {
+  const url = new URL(urlString);
+  url.searchParams.set('v', String(Date.now()));
+  return url.href;
+}
+
+async function ensureStoryboardService(tutorial) {
+  const boardUrl = parseHttpUrl(tutorial.boardUrl);
+  if (!boardUrl) return null;
+  const healthUrl = new URL('/api/health', boardUrl);
+  const expectedOutputDir = path.resolve(tutorial.outputDir);
+
+  try {
+    const health = await fetchJsonWithTimeout(healthUrl.href);
+    if (path.resolve(health.outputDir || '') !== expectedOutputDir) {
+      throw new Error(`3829 已被其他审片板占用：${health.outputDir || '未知输出目录'}`);
+    }
+    return { started: false, healthUrl: healthUrl.href };
+  } catch (error) {
+    if (/已被其他审片板占用/.test(error.message)) throw error;
+  }
+
+  const port = boardUrl.port || '80';
+  const logsDir = path.join(tutorial.outputDir, 'logs');
+  await fs.mkdir(logsDir, { recursive: true });
+  const logPath = path.join(logsDir, `hub-storyboard-server-${port}.log`);
+  const command = process.execPath;
+  const args = [
+    path.join(ROOT_DIR, 'scripts/storyboard_server.mjs'),
+    '--output',
+    tutorial.outputDir,
+    '--port',
+    port
+  ];
+  const pid = runDetachedServer(command, args, logPath);
+  await waitForHttpOk(healthUrl.href);
+  return { started: true, pid, healthUrl: healthUrl.href, logPath };
+}
+
+async function waitForStoryboardChromeTarget(boardUrl, timeoutMs = 6000) {
+  const parsed = new URL(boardUrl);
+  const hostPort = `${parsed.hostname}:${parsed.port || '80'}`;
+  const startedAt = Date.now();
+  let lastError = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const targets = await listTargets();
+      const candidates = targets.filter(item => String(item.url || '').includes(hostPort));
+      for (const target of candidates) {
+        try {
+          const pageState = await evalInTarget(target.targetId, `(() => ({
+            title: document.title,
+            sceneCount: document.querySelectorAll('.scene').length,
+            hasSaveOrder: document.documentElement.innerHTML.includes('/api/save-order')
+          }))()`);
+          if (pageState.sceneCount > 0 || pageState.hasSaveOrder) {
+            return { targetId: target.targetId, url: target.url, sceneCount: pageState.sceneCount };
+          }
+        } catch (error) {
+          lastError = error;
+        }
+      }
+    } catch (error) {
+      lastError = error;
+    }
+    await sleep(300);
+  }
+
+  throw new Error(`已打开审片板，但 Chrome 里没有检测到可导出的镜头页面：${lastError?.message || boardUrl}`);
+}
+
+async function ensureOpenStoryboardBoard(tutorial) {
+  if (!storyBoardBuildNeedsOpenBoard(tutorial)) return null;
+  const service = await ensureStoryboardService(tutorial);
+  const boardUrl = cacheBustedUrl(tutorial.boardUrl);
+  let targetId = null;
+
+  try {
+    const targets = await listTargets();
+    const parsed = new URL(boardUrl);
+    const hostPort = `${parsed.hostname}:${parsed.port || '80'}`;
+    const existing = targets.find(item => String(item.url || '').includes(hostPort));
+    if (existing?.targetId) {
+      targetId = existing.targetId;
+      await navigateTarget(targetId, boardUrl);
+    } else {
+      targetId = await newTarget(boardUrl);
+    }
+  } catch {
+    await openWithFinder([boardUrl]);
+  }
+
+  const target = await waitForStoryboardChromeTarget(boardUrl);
+  return { ...service, boardUrl, targetId: target.targetId || targetId, sceneCount: target.sceneCount };
 }
 
 function openWithFinder(args) {
@@ -407,7 +559,11 @@ function renderHubHtml(publicData) {
     async function post(path, body = {}) {
       const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const json = await response.json();
-      if (!response.ok) throw new Error(json.reason || json.error || response.statusText);
+      if (!response.ok) {
+        const error = new Error(json.reason || json.error || response.statusText);
+        error.details = json;
+        throw error;
+      }
       return json;
     }
     function bindResultActions(root) {
@@ -492,7 +648,13 @@ function renderHubHtml(publicData) {
       );
     }
     function renderError(error) {
-      setResult('<div class="result-title">操作没有完成</div><div>' + escapeHtml(error.message || error) + '</div>', 'error');
+      setResult(
+        '<div class="result-title">操作没有完成</div>' +
+        '<div>' + escapeHtml(error.message || error) + '</div>' +
+        renderPath('命令', error.details?.command) +
+        renderTechnicalLog(error.details),
+        'error'
+      );
     }
     async function buildTutorial(id) {
       setLog('正在生成当前教程视频...');
@@ -712,12 +874,14 @@ const server = http.createServer(async (req, res) => {
 
       buildRunning = true;
       try {
+        const board = await ensureOpenStoryboardBoard(tutorial);
         const result = await runCommand(tutorial.build.command, tutorial.build.args);
         sendJson(req, res, 200, {
           ok: true,
           tutorialId: tutorial.id,
           videoPath: tutorial.videoPath,
           videoInfo: await videoInfoFor(tutorial),
+          board,
           stdout: result.stdout,
           stderr: result.stderr
         });
